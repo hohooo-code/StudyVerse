@@ -17,21 +17,27 @@
             50% { transform: scale(1.1); opacity: 0.7; }
             100% { transform: scale(1); opacity: 1; }
         }
+        /* 螢幕常亮提醒樣式 */
+        .nosleep-active { color: #3b82f6; text-shadow: 0 0 5px rgba(59, 130, 246, 0.5); }
     </style>
 </head>
 <body class="flex flex-col items-center justify-center h-screen text-slate-200">
 
-    <div id="setupView" class="text-center p-8">
+    <div id="setupView" class="text-center p-8 w-full max-w-sm">
         <div class="mb-6">
-            <i class="fas fa-mobile-alt text-6xl text-blue-500 mb-4"></i>
+            <div class="relative inline-block">
+                <i class="fas fa-mobile-alt text-6xl text-blue-500 mb-4"></i>
+                <i class="fas fa-sync-alt absolute -right-2 -top-2 text-blue-400 animate-spin-slow text-xl"></i>
+            </div>
             <h1 class="text-2xl font-black italic">StudyVerse Sync</h1>
-            <p class="text-slate-400 text-sm mt-2">請輸入您在電腦端使用的姓名</p>
+            <p class="text-slate-400 text-sm mt-2">請確認您在大廳使用的姓名</p>
         </div>
-        <input type="text" id="username" class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 w-full text-center text-xl mb-4 focus:border-blue-500 outline-none" placeholder="姓名">
-        <button onclick="startSync()" class="bg-blue-600 hover:bg-blue-500 w-full py-4 rounded-xl font-bold shadow-lg shadow-blue-900/50 active:scale-95 transition-all">
-            啟動連動偵測
+        <input type="text" id="username" class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 w-full text-center text-xl mb-4 focus:border-blue-500 outline-none text-white font-bold" placeholder="輸入姓名...">
+        <button onclick="startSync()" class="bg-blue-600 hover:bg-blue-500 w-full py-4 rounded-xl font-bold shadow-lg shadow-blue-900/50 active:scale-95 transition-all flex items-center justify-center gap-3">
+            <span>啟動連動偵測</span>
+            <i class="fas fa-satellite-dish"></i>
         </button>
-        <p class="text-[10px] text-slate-500 mt-6 uppercase tracking-widest">iOS 使用者需點擊按鈕授權感應器</p>
+        <p class="text-[10px] text-slate-500 mt-6 uppercase tracking-widest">⚠️ 翻轉後請勿手動關閉螢幕電源</p>
     </div>
 
     <div id="syncView" class="hidden text-center">
@@ -39,12 +45,15 @@
             <i id="statusIcon" class="fas fa-arrow-down text-4xl mb-2 text-slate-600"></i>
             <p id="statusText" class="font-bold text-slate-500">請將手機翻轉蓋上</p>
         </div>
-        <div class="space-y-2">
+        <div class="space-y-3">
             <h2 id="displayName" class="text-2xl font-black">---</h2>
             <div class="flex items-center justify-center gap-2">
-                <span id="connectionBadge" class="bg-green-500/20 text-green-500 text-[10px] px-2 py-0.5 rounded">連線正常</span>
+                <span id="connectionBadge" class="bg-green-500/20 text-green-500 text-[10px] px-2 py-0.5 rounded flex items-center gap-1">
+                    <i class="fas fa-wifi text-[8px]"></i> 連線正常
+                </span>
                 <span id="flipBadge" class="bg-slate-700 text-slate-400 text-[10px] px-2 py-0.5 rounded">尚未翻轉</span>
             </div>
+            <p class="text-[10px] text-slate-600 italic">偵測運行中，請保持此畫面開啟</p>
         </div>
     </div>
 
@@ -53,9 +62,20 @@
         let isFlipped = false;
         let username = "";
 
+        // 自動嘗試載入大廳的姓名
+        window.onload = () => {
+            const savedName = localStorage.getItem('studyVerseUser');
+            if (savedName) {
+                document.getElementById('username').value = savedName;
+            }
+        };
+
         async function startSync() {
-            username = document.getElementById('username').value;
+            username = document.getElementById('username').value.trim();
             if (!username) return alert('請輸入姓名');
+
+            // 儲存姓名方便下次使用
+            localStorage.setItem('studyVerseUser', username);
 
             // iOS 設備授權 (必需)
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -71,22 +91,26 @@
             document.getElementById('syncView').classList.remove('hidden');
             document.getElementById('displayName').innerText = username;
 
+            // 啟動感應器
             window.addEventListener('deviceorientation', handleOrientation);
             
-            // 定時心跳連線
+            // 立即發送一次狀態
+            socket.emit('update_status', { name: username, isFlipped: isFlipped });
+
+            // 定時心跳連線 (增加雲端穩定性)
             setInterval(() => {
-                socket.emit('update_status', { name: username, isFlipped: isFlipped });
+                if (socket.connected) {
+                    socket.emit('update_status', { name: username, isFlipped: isFlipped });
+                }
             }, 3000);
         }
 
         function handleOrientation(event) {
-            // beta 是前後傾斜 (Degrees: -180 to 180)
-            // 手機面朝下通常 beta 會接近 180 或 -180
-            const beta = event.beta;
-            const gamma = event.gamma;
+            const beta = event.beta;   // 前後
+            const gamma = event.gamma; // 左右
 
-            // 判斷邏輯：手機翻轉螢幕朝下，beta 絕對值大於 160 度
-            const currentlyFlipped = Math.abs(beta) > 165;
+            // 偵測邏輯優化：面朝下 (絕對值接近 180)
+            const currentlyFlipped = Math.abs(beta) > 160;
 
             if (currentlyFlipped !== isFlipped) {
                 isFlipped = currentlyFlipped;
@@ -111,7 +135,6 @@
                 badge.classList.replace('bg-slate-700', 'bg-blue-500');
                 badge.classList.replace('text-slate-400', 'text-white');
                 
-                // 翻轉時震動一下 (手機支援的話)
                 if (navigator.vibrate) navigator.vibrate(50);
             } else {
                 ball.classList.remove('active-flip', 'pulse');
@@ -124,6 +147,21 @@
                 badge.classList.replace('text-white', 'text-slate-400');
             }
         }
+
+        // 監聽 Socket 連線狀態
+        socket.on('connect', () => {
+            const cb = document.getElementById('connectionBadge');
+            cb.classList.replace('bg-red-500/20', 'bg-green-500/20');
+            cb.classList.replace('text-red-500', 'text-green-500');
+            cb.innerHTML = '<i class="fas fa-wifi text-[8px]"></i> 連線正常';
+        });
+
+        socket.on('disconnect', () => {
+            const cb = document.getElementById('connectionBadge');
+            cb.classList.replace('bg-green-500/20', 'bg-red-500/20');
+            cb.classList.replace('text-green-500', 'text-red-500');
+            cb.innerHTML = '<i class="fas fa-times text-[8px]"></i> 連線中斷';
+        });
     </script>
 </body>
 </html>

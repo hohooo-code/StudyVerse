@@ -3,22 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 24H 旗艦動漫自習室</title>
+    <title>AI 24H 旗艦動漫自習室 | STUDY VERSE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <link rel="stylesheet" href="css/style.css">
+    <script src="/socket.io/socket.io.js"></script>
     <style>
-        /* 確保主網格能正確並列顯示 */
+        body { background-color: #05070a; color: #e0e0e0; font-family: 'Inter', sans-serif; }
         .cam-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
             gap: 1.5rem;
             width: 100%;
         }
-        
         .tab-btn {
             flex: 1;
             padding: 0.75rem;
@@ -27,20 +25,16 @@
             border-bottom: 2px solid transparent;
             transition: all 0.3s;
         }
-        
         .tab-active {
             color: #3b82f6;
             border-bottom-color: #3b82f6;
             background: rgba(59, 130, 246, 0.05);
         }
-
         .glass-panel {
             background: rgba(17, 24, 39, 0.7);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
-
-        /* 專注狀態標籤 */
         .status-badge {
             position: absolute;
             top: 10px;
@@ -54,11 +48,9 @@
             color: white;
             text-transform: uppercase;
         }
-
-        /* 黑板手寫風字體模擬 */
-        .font-handwriting {
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-        }
+        .font-handwriting { font-family: 'Comic Sans MS', cursive, sans-serif; }
+        @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-spin-slow { animation: spin-slow 8s linear infinite; }
     </style>
 </head>
 <body class="h-screen flex flex-col md:flex-row bg-[#05070a] text-white overflow-hidden">
@@ -68,25 +60,29 @@
             <h1 class="text-3xl font-black text-blue-500 mb-2 tracking-tighter">STUDY VERSE</h1>
             <p class="text-gray-500 text-xs mb-6">AI 視覺偵測系統連線中</p>
             
-            <div class="space-y-3 mb-6">
+            <div class="space-y-3 mb-6 text-left">
+                <label class="text-[10px] text-gray-500 font-bold ml-1 uppercase">Commander Name</label>
                 <input id="inputName" class="w-full bg-black p-3 rounded-xl border border-gray-700 text-white outline-none text-sm focus:border-blue-500 transition-all" placeholder="你的暱稱">
-                <input id="inputGoal" class="w-full bg-black p-3 rounded-xl border border-gray-700 text-white outline-none text-sm focus:border-blue-500 transition-all" placeholder="今天的專注目標 (例：讀完英文第一章)">
                 
+                <label class="text-[10px] text-gray-500 font-bold ml-1 uppercase">Focus Mission</label>
+                <input id="inputGoal" class="w-full bg-black p-3 rounded-xl border border-gray-700 text-white outline-none text-sm focus:border-blue-500 transition-all" placeholder="今天的專注目標 (例：刷 50 題數學)">
+                
+                <label class="text-[10px] text-gray-500 font-bold ml-1 uppercase">AI Protocol</label>
                 <select id="inputMode" class="w-full bg-black p-3 rounded-xl border border-gray-700 text-white outline-none text-sm cursor-pointer">
                     <option value="1">👁️ 模式一：線上課程 (偵測分心)</option>
                     <option value="2">🦅 模式二：一般自習 (偵測離座與滑手機)</option>
                     <option value="simulated" selected>🏛️ 模式三：模擬線上教室 (教師連動與截圖)</option>
                 </select>
 
-                <div class="relative w-full aspect-video bg-black rounded-xl border border-gray-700 overflow-hidden">
+                <div class="relative w-full aspect-video bg-black rounded-xl border border-gray-700 overflow-hidden mt-4">
                     <video id="previewWebcam" class="w-full h-full object-cover scale-x-[-1]" autoplay playsinline muted></video>
                     <div id="previewStatus" class="absolute bottom-2 left-2 text-[10px] text-gray-400 bg-black/60 px-2 py-1 rounded">鏡頭準備中...</div>
                 </div>
 
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3 mt-4">
                     <div class="flex-1 bg-black p-3 rounded-xl border border-gray-700 flex items-center">
                         <span class="text-gray-500 text-xs mr-2 uppercase">Time</span>
-                        <input id="inputTime" type="number" class="w-full bg-transparent text-white text-sm outline-none" value="25">
+                        <input id="inputTime" type="number" class="w-full bg-transparent text-white text-sm outline-none font-mono" value="25">
                         <span class="text-gray-400 text-xs ml-1">min</span>
                     </div>
                 </div>
@@ -113,21 +109,23 @@
 
         <div class="flex border-b border-white/5 px-2">
             <button onclick="switchTab('rank')" id="btn-rank" class="tab-btn tab-active font-bold">🔥 專注榜</button>
-            <button onclick="switchTab('achieve')" id="btn-achieve" class="tab-btn font-bold">🏆 成就/累積</button>
+            <button onclick="switchTab('achieve')" id="btn-achieve" class="tab-btn font-bold">🏆 累積數據</button>
         </div>
 
         <div class="flex-1 relative overflow-hidden bg-black/20">
             <div id="tab-rank" class="absolute inset-0 p-4 space-y-2 overflow-y-auto">
-                </div>
+                <p class="text-[10px] text-gray-600 text-center mt-10 uppercase tracking-widest">正在載入專注排行...</p>
+            </div>
             <div id="tab-achieve" class="absolute inset-0 p-4 space-y-2 hidden overflow-y-auto">
-                </div>
+                <p class="text-[10px] text-gray-600 text-center mt-10 uppercase tracking-widest">正在載入成就系統...</p>
+            </div>
         </div>
 
         <div class="p-4 bg-[#111827]/80 backdrop-blur-sm border-t border-white/10 flex items-center gap-3">
             <img id="mySidebarAvatar" src="https://api.dicebear.com/7.x/big-smile/svg?seed=Study" class="w-12 h-12 rounded-full border-2 border-gray-600 bg-gray-800">
             <div class="flex-1 min-w-0">
                 <p id="mySidebarName" class="text-sm font-bold text-white truncate">--</p>
-                <p id="mySidebarGoal" class="text-[10px] text-blue-400 truncate uppercase tracking-tighter">準備就緒</p>
+                <p id="mySidebarGoal" class="text-[10px] text-blue-400 truncate uppercase tracking-tighter italic">準備就緒</p>
             </div>
             <div class="text-right">
                 <p class="text-[8px] text-gray-500 uppercase">Streak</p>
@@ -152,7 +150,6 @@
         </header>
 
         <div class="flex-1 p-6 overflow-y-auto">
-            
             <div id="blackboard" class="mb-6 bg-slate-800 border-4 border-slate-700 p-4 rounded-xl shadow-inner hidden max-w-4xl mx-auto">
                 <h3 class="text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest border-b border-slate-700 pb-1">Teacher's Blackboard / 老師公告區</h3>
                 <p id="blackboardContent" class="text-lg text-slate-200 font-handwriting leading-relaxed">
@@ -176,12 +173,11 @@
                     </div>
                     <div class="mt-3 bg-[#111827] p-4 rounded-2xl flex items-center gap-3 border border-white/5 shadow-lg">
                         <div id="myStatusBubble" class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_#22c55e]"></div>
-                        <p id="dashboardGoal" class="text-xs font-bold text-gray-300 truncate">...</p>
+                        <p id="dashboardGoal" class="text-xs font-bold text-gray-300 truncate">等待任務分配...</p>
                     </div>
                 </div>
 
-                <div id="othersContainer" class="contents">
-                    </div>
+                <div id="othersContainer" class="contents"></div>
             </div>
         </div>
 
@@ -196,7 +192,28 @@
     <script type="module" src="js/ai-core.js"></script>
     
     <script>
-        // 介面標籤切換輔助邏輯
+        // 從 localStorage 自動填入暱稱
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedName = localStorage.getItem('studyVerseUser');
+            if (savedName) {
+                document.getElementById('inputName').value = savedName;
+            }
+            startPreview();
+        });
+
+        // 預覽鏡頭功能
+        async function startPreview() {
+            const video = document.getElementById('previewWebcam');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                document.getElementById('previewStatus').innerText = "✅ 鏡頭已就緒";
+            } catch (err) {
+                document.getElementById('previewStatus').innerText = "❌ 無法取得鏡頭權限";
+            }
+        }
+
+        // 介面標籤切換
         function switchTab(tab) {
             document.getElementById('tab-rank').classList.toggle('hidden', tab !== 'rank');
             document.getElementById('tab-achieve').classList.toggle('hidden', tab !== 'achieve');
@@ -204,13 +221,19 @@
             document.getElementById('btn-achieve').classList.toggle('tab-active', tab === 'achieve');
         }
 
-        // 定時更新日期
+        // 時鐘功能
         setInterval(() => {
             const now = new Date();
             const dateStr = now.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'short' });
+            const timeStr = now.toLocaleTimeString('zh-TW', { hour12: false });
+            
             const clockDate = document.getElementById('clockDate');
+            const clockTime = document.getElementById('clockTime');
             if(clockDate) clockDate.innerText = dateStr;
+            if(clockTime) clockTime.innerText = timeStr;
         }, 1000);
+
+        // 初始化由 ai-core.js 處理的 initApp 會透過 onclick 呼叫
     </script>
 </body>
 </html>

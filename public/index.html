@@ -202,10 +202,12 @@
             }
         }
 
-        // --- 新增：QR Code 生成功能 ---
+        // --- 優化：動態抓取當前環境網址生成 QR Code ---
         function initSyncQRCode() {
             const qrcodeContainer = document.getElementById("qrcode");
-            const mobileUrl = `${window.location.protocol}//${window.location.host}/mobile.html`;
+            // 自動識別是 localhost 還是 Render 雲端網址
+            const baseUrl = window.location.origin; 
+            const mobileUrl = `${baseUrl}/mobile.html`;
             
             qrcodeContainer.innerHTML = ""; // 清空
 
@@ -217,12 +219,15 @@
                 colorLight : "#ffffff",
                 correctLevel : QRCode.CorrectLevel.H
             });
+            console.log("QR Code Generated for:", mobileUrl);
         }
 
         function copyMobileUrl() {
-            const mobileUrl = `${window.location.protocol}//${window.location.host}/mobile.html`;
-            navigator.clipboard.writeText(mobileUrl);
-            alert('手機連動網址已複製到剪貼簿！');
+            const baseUrl = window.location.origin;
+            const mobileUrl = `${baseUrl}/mobile.html`;
+            navigator.clipboard.writeText(mobileUrl).then(() => {
+                alert('手機連動網址已複製到剪貼簿！');
+            });
         }
 
         function saveName() {
