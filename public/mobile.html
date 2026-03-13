@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>StudyVerse | 翻轉連動模式</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background-color: #0f172a; touch-action: none; overflow: hidden; }
+        .status-dot { transition: all 0.5s ease; }
+        .active-flip { background: #1e40af; box-shadow: 0 0 50px #3b82f6; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center h-screen text-slate-200">
+
+    <div id="setupView" class="text-center p-8">
+        <div class="mb-6">
+            <i class="fas fa-mobile-alt text-6xl text-blue-500 mb-4"></i>
+            <h1 class="text-2xl font-black italic">StudyVerse Sync</h1>
+            <p class="text-slate-400 text-sm mt-2">請輸入您在電腦端使用的姓名</p>
+        </div>
+        <input type="text" id="username" class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 w-full text-center text-xl mb-4 focus:border-blue-500 outline-none" placeholder="姓名">
+        <button onclick="startSync()" class="bg-blue-600 hover:bg-blue-500 w-full py-4 rounded-xl font-bold shadow-lg shadow-blue-900/50 active:scale-95 transition-all">
+            啟動連動偵測
+        </button>
+        <p class="text-[10px] text-slate-500 mt-6 uppercase tracking-widest">iOS 使用者需點擊按鈕授權感應器</p>
+    </div>
+
+    <div id="syncView" class="hidden text-center">
+        <div id="statusBall" class="w-48 h-48 rounded-full border-4 border-slate-700 flex flex-col items-center justify-center mx-auto mb-10 transition-all duration-700">
+            <i id="statusIcon" class="fas fa-arrow-down text-4xl mb-2 text-slate-600"></i>
+            <p id="statusText" class="font-bold text-slate-500">請將手機翻轉蓋上</p>
+        </div>
+        <div class="space-y-2">
+            <h2 id="displayName" class="text-2xl font-black">---</h2>
+            <div class="flex items-center justify-center gap-2">
+                <span id="connectionBadge" class="bg-green-500/20 text-green-500 text-[10px] px-2 py-0.5 rounded">連線正常</span>
+                <span id="flipBadge" class="bg-slate-700 text-slate-400 text-[10px] px-2 py-0.5 rounded">尚未翻轉</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let isFlipped = false;
+        let username = "";
+
+        async function startSync() {
+            username = document.getElementById('username').value;
+            if (!username) return alert('請輸入姓名');
+
+            // iOS 設備授權 (必需)
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission !== 'granted') return alert('需要感應器權限才能運作');
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+
+            document.getElementById('setupView').classList.add('hidden');
+            document.getElementById('syncView').classList.remove('hidden');
+            document.getElementById('displayName').innerText = username;
+
+            window.addEventListener('deviceorientation', handleOrientation);
+            
+            // 定時心跳連線
+            setInterval(() => {
+                socket.emit('update_status', { name: username, isFlipped: isFlipped });
+            }, 3000);
+        }
+
+        function handleOrientation(event) {
+            // beta 是前後傾斜 (Degrees: -180 to 180)
+            // 手機面朝下通常 beta 會接近 180 或 -180
+            const beta = event.beta;
+            const gamma = event.gamma;
+
+            // 判斷邏輯：手機翻轉螢幕朝下，beta 絕對值大於 160 度
+            const currentlyFlipped = Math.abs(beta) > 165;
+
+            if (currentlyFlipped !== isFlipped) {
+                isFlipped = currentlyFlipped;
+                updateUI();
+                socket.emit('update_status', { name: username, isFlipped: isFlipped });
+            }
+        }
+
+        function updateUI() {
+            const ball = document.getElementById('statusBall');
+            const icon = document.getElementById('statusIcon');
+            const text = document.getElementById('statusText');
+            const badge = document.getElementById('flipBadge');
+
+            if (isFlipped) {
+                ball.classList.add('active-flip', 'pulse');
+                ball.classList.remove('border-slate-700');
+                icon.className = "fas fa-moon text-white text-4xl mb-2";
+                text.innerText = "深度專注中";
+                text.classList.replace('text-slate-500', 'text-white');
+                badge.innerText = "已翻轉專注";
+                badge.classList.replace('bg-slate-700', 'bg-blue-500');
+                badge.classList.replace('text-slate-400', 'text-white');
+                
+                // 翻轉時震動一下 (手機支援的話)
+                if (navigator.vibrate) navigator.vibrate(50);
+            } else {
+                ball.classList.remove('active-flip', 'pulse');
+                ball.classList.add('border-slate-700');
+                icon.className = "fas fa-arrow-down text-slate-600 text-4xl mb-2";
+                text.innerText = "請將手機翻轉蓋上";
+                text.classList.replace('text-white', 'text-slate-500');
+                badge.innerText = "尚未翻轉";
+                badge.classList.replace('bg-blue-500', 'bg-slate-700');
+                badge.classList.replace('text-white', 'text-slate-400');
+            }
+        }
+    </script>
+</body>
+</html>

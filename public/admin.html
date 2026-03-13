@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyVerse | 專業教師控管後端</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        .scroll-hide::-webkit-scrollbar { display: none; }
+        .violation-card { animation: shake 0.5s infinite; border: 2px solid #ef4444; box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); }
+        .status-pulse { animation: pulse-custom 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-2px); }
+            75% { transform: translateX(2px); }
+        }
+        @keyframes pulse-custom {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .flip-active { background: linear-gradient(135deg, #1e293b 0%, #1e40af 100%); border-color: #3b82f6 !important; }
+    </style>
+</head>
+<body class="bg-[#0f172a] text-slate-200 h-screen flex overflow-hidden">
+
+    <aside class="w-80 border-r border-slate-800 flex flex-col bg-[#1e293b]">
+        <div class="p-6 border-b border-slate-800">
+            <h1 class="text-xl font-black text-blue-400 tracking-tighter italic">STUDYVERSE PRO</h1>
+            <div id="systemClock" class="text-xs text-slate-400 mt-1 font-mono">2026.03.13 14:30:00</div>
+        </div>
+
+        <div class="p-6 space-y-6 flex-1 overflow-y-auto scroll-hide">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase">黑板公告更新</label>
+                <textarea id="announcementInput" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-blue-500 text-white" rows="3" placeholder="輸入今日作業或小考內容..."></textarea>
+                <button onclick="updateBlackboard()" class="w-full mt-2 bg-blue-600 hover:bg-blue-500 py-2 rounded-lg text-xs font-bold transition-all shadow-lg active:scale-95">同步至學生端</button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="exportCSV()" class="bg-slate-700 hover:bg-slate-600 py-3 rounded-xl text-xs flex flex-col items-center gap-1 transition-all active:scale-95">
+                    <i class="fas fa-file-csv text-green-400 text-lg"></i>匯出報表
+                </button>
+                <button onclick="playChime()" class="bg-slate-700 hover:bg-slate-600 py-3 rounded-xl text-xs flex flex-col items-center gap-1 transition-all active:scale-95">
+                    <i class="fas fa-bell text-yellow-400 text-lg"></i>播放下課鐘
+                </button>
+            </div>
+
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <label class="block text-xs font-bold text-slate-500 uppercase">實時事件日誌</label>
+                    <button onclick="document.getElementById('logContainer').innerHTML=''" class="text-[10px] text-slate-500 hover:text-white">清除</button>
+                </div>
+                <div id="logContainer" class="bg-black/30 rounded-lg p-3 h-64 overflow-y-auto font-mono text-[10px] space-y-1 text-slate-400 border border-slate-800">
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col bg-[#0f172a]">
+        <header class="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-[#1e293b]/50 backdrop-blur-md">
+            <div class="flex items-center gap-4">
+                <span class="flex items-center gap-2 bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full text-xs font-bold">
+                    <span class="relative flex h-2 w-2">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    在線人數：<span id="onlineCount">0</span>
+                </span>
+                <div id="classStatus" class="text-xs font-bold text-slate-500">教室模式：<span class="text-slate-300">模擬線上教室</span></div>
+            </div>
+            <div class="flex items-center gap-4 text-xs">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_5px_#22c55e]"></div>
+                    <span class="text-slate-400">系統運作正常</span>
+                </div>
+            </div>
+        </header>
+
+        <section id="studentGrid" class="flex-1 p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 overflow-y-auto scroll-hide">
+            </section>
+    </main>
+
+    <aside class="w-96 border-l border-slate-800 bg-[#1e293b] flex flex-col">
+        <div class="flex border-b border-slate-800 bg-slate-900/50">
+            <button onclick="switchTab('violations')" id="btn-violations" class="flex-1 py-4 text-xs font-bold border-b-2 border-blue-500 text-blue-500 transition-all">違規證據</button>
+            <button onclick="switchTab('summary')" id="btn-summary" class="flex-1 py-4 text-xs font-bold text-slate-500 border-b-2 border-transparent transition-all">數據總結</button>
+        </div>
+
+        <div id="tab-violations" class="flex-1 p-4 overflow-y-auto space-y-4">
+            </div>
+
+        <div id="tab-summary" class="hidden flex-1 p-6 overflow-y-auto">
+            <h3 class="text-sm font-bold text-white mb-4"><i class="fas fa-chart-pie mr-2 text-blue-400"></i>今日學習概況</h3>
+            <div id="summaryStats" class="space-y-4">
+                </div>
+        </div>
+    </aside>
+
+    <script>
+        const socket = io();
+        let students = [];
+        let violationHistory = [];
+
+        // 1. 即時時鐘
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('systemClock').innerText = now.toLocaleString('zh-TW', { hour12: false });
+        }, 1000);
+
+        // 2. 接收數據更新
+        socket.on('update_rank', (data) => {
+            students = data;
+            renderStudentGrid();
+            renderSummary();
+            document.getElementById('onlineCount').innerText = data.length;
+        });
+
+        socket.on('teacher_update', (data) => {
+            if (data.logs) renderLogs(data.logs);
+            if (data.snaps) {
+                violationHistory = data.snaps;
+                renderViolations(data.snaps);
+            }
+        });
+
+        // 3. [強化邏輯] 渲染學生卡片
+        function renderStudentGrid() {
+            const grid = document.getElementById('studentGrid');
+            grid.innerHTML = students.map(s => {
+                const isDistracted = s.status === 'DISTRACTED' || s.status === 'SLEEPING';
+                const isBreak = s.status === 'BREAK';
+                const isFlipped = s.isFlipped === true; // 手機翻轉狀態
+
+                return `
+                <div class="bg-slate-800/50 rounded-2xl p-5 border-2 transition-all duration-500 relative overflow-hidden
+                    ${isDistracted ? 'violation-card border-red-500/50' : (isFlipped ? 'flip-active border-blue-500' : 'border-slate-700')} 
+                    ${isBreak ? 'opacity-60 grayscale-[0.5]' : ''}">
+                    
+                    ${isFlipped ? `
+                        <div class="absolute -right-6 -top-6 bg-blue-500 text-white w-16 h-16 rotate-45 flex items-end justify-center pb-1 shadow-lg">
+                            <i class="fas fa-mobile-alt -rotate-45 text-xs"></i>
+                        </div>
+                    ` : ''}
+
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="relative">
+                            <img src="https://api.dicebear.com/7.x/big-smile/svg?seed=${s.name}" class="w-14 h-14 rounded-full border-2 border-slate-600 bg-slate-900 shadow-xl">
+                            <div class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-800 ${s.status === 'FOCUSED' ? 'bg-green-500 shadow-[0_0_5px_#22c55e]' : (isBreak ? 'bg-blue-400' : 'bg-red-500')}"></div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[9px] font-mono bg-black/40 px-2 py-1 rounded text-slate-400">#${s.id.slice(-4)}</span>
+                            <p class="text-sm font-black mt-1 text-white">${s.name}</p>
+                            <p class="text-[10px] text-blue-400 font-bold">${isFlipped ? '手機已翻轉專注' : ''}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-2 mb-4">
+                        <div class="flex justify-between text-[10px] items-center">
+                            <span class="text-slate-500">當前目標</span>
+                            <span class="text-slate-200 truncate ml-4 font-medium">${s.goal || '自主學習中'}</span>
+                        </div>
+                        <div class="flex justify-between text-[10px] items-center">
+                            <span class="text-slate-500">專注累積</span>
+                            <span class="font-mono text-white bg-slate-900 px-2 py-0.5 rounded">${s.focusMinutes} Min</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between pt-3 border-t border-slate-700/50">
+                        <span class="text-[10px] font-black tracking-widest uppercase ${isDistracted ? 'text-red-500 status-pulse' : (isBreak ? 'text-blue-400' : 'text-green-500')}">
+                            ${s.status}
+                        </span>
+                        
+                        <div class="flex gap-2">
+                            ${isDistracted ? `
+                                <button onclick="remoteWakeup('${s.name}')" class="bg-yellow-500 hover:bg-yellow-400 text-slate-900 text-[10px] font-black px-3 py-1 rounded-full transition-all active:scale-90 shadow-lg shadow-yellow-500/20">
+                                    <i class="fas fa-bolt mr-1"></i>提醒
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        // 4. [新增數據分析] 渲染數據總結
+        function renderSummary() {
+            const summaryContainer = document.getElementById('summaryStats');
+            if (students.length === 0) {
+                summaryContainer.innerHTML = `<p class="text-xs text-slate-500 text-center py-10">目前尚無在線學生數據</p>`;
+                return;
+            }
+
+            const totalMinutes = students.reduce((acc, s) => acc + (s.focusMinutes || 0), 0);
+            const avgMinutes = (totalMinutes / students.length).toFixed(1);
+            const focusCount = students.filter(s => s.status === 'FOCUSED').length;
+            const focusRate = ((focusCount / students.length) * 100).toFixed(0);
+
+            summaryContainer.innerHTML = `
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                        <p class="text-[10px] text-slate-500 mb-1">平均專注時間</p>
+                        <p class="text-xl font-black text-blue-400">${avgMinutes} <span class="text-xs font-normal">min</span></p>
+                    </div>
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                        <p class="text-[10px] text-slate-500 mb-1">當前專注率</p>
+                        <p class="text-xl font-black text-green-400">${focusRate}%</p>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <p class="text-[10px] text-slate-500 mb-2 font-bold uppercase">專注度排行榜</p>
+                    <div class="space-y-2">
+                        ${[...students].sort((a,b) => b.focusMinutes - a.focusMinutes).slice(0,5).map((s, i) => `
+                            <div class="flex items-center justify-between text-xs bg-black/20 p-2 rounded-lg">
+                                <span class="text-slate-400 w-4">${i+1}.</span>
+                                <span class="flex-1 font-bold ml-2">${s.name}</span>
+                                <span class="text-blue-400 font-mono">${s.focusMinutes}m</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="mt-6 bg-red-500/5 p-4 rounded-xl border border-red-500/20">
+                    <p class="text-[10px] text-red-400 mb-1 font-bold"><i class="fas fa-exclamation-circle mr-1"></i>異常警告總計</p>
+                    <p class="text-xl font-black text-white">${violationHistory.length} <span class="text-xs font-normal">次</span></p>
+                </div>
+            `;
+        }
+
+        // 5. 渲染截圖
+        function renderViolations(snaps) {
+            const container = document.getElementById('tab-violations');
+            if (snaps.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-500 text-center py-20">尚無偵測到違規行為</p>`;
+                return;
+            }
+            container.innerHTML = snaps.map(snap => `
+                <div class="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 group hover:border-red-500/50 transition-all duration-300">
+                    <div class="relative">
+                        <img src="${snap.image}" class="w-full h-36 object-cover opacity-80 group-hover:opacity-100 transition-all">
+                        <div class="absolute top-2 left-2 bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-lg uppercase">Evidence</div>
+                    </div>
+                    <div class="p-3">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-white font-black text-xs">${snap.name}</span>
+                            <span class="text-[10px] font-mono text-slate-500">${snap.time}</span>
+                        </div>
+                        <p class="text-[11px] text-red-400 bg-red-500/10 px-2 py-1 rounded inline-block">
+                            <i class="fas fa-warning mr-1"></i>${snap.reason}
+                        </p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderLogs(logs) {
+            const logContainer = document.getElementById('logContainer');
+            logContainer.innerHTML = logs.map(l => `
+                <div class="border-b border-white/5 pb-1 flex gap-2">
+                    <span class="text-blue-500 shrink-0">>></span>
+                    <span>${l}</span>
+                </div>
+            `).reverse().join(''); // 最新的顯示在最上面
+        }
+
+        // 核心操作
+        function updateBlackboard() {
+            const text = document.getElementById('announcementInput').value;
+            if (!text.trim()) return alert('請輸入內容');
+            socket.emit('admin_action', { type: 'BLACKBOARD', content: text });
+            
+            // 加入日誌
+            const logContainer = document.getElementById('logContainer');
+            const time = new Date().toLocaleTimeString();
+            logContainer.insertAdjacentHTML('afterbegin', `<p class="text-green-400">[${time}] 更新黑板內容成功</p>`);
+        }
+
+        function remoteWakeup(name) {
+            socket.emit('admin_action', { type: 'WAKEUP', target: name });
+        }
+
+        function playChime() {
+            if(confirm('確定要向所有學生播放下課鐘聲？')) {
+                socket.emit('admin_action', { type: 'PLAY_SOUND', sound: 'chime' });
+            }
+        }
+
+        function exportCSV() {
+            let csv = "\ufeff姓名,專注分鐘,手機翻轉,當前狀態,最後目標\n";
+            students.forEach(s => {
+                csv += `${s.name},${s.focusMinutes},${s.isFlipped ? '是' : '否'},${s.status},${s.goal}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `StudyVerse_監控報表_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+        }
+
+        function switchTab(tab) {
+            document.getElementById('tab-violations').classList.toggle('hidden', tab !== 'violations');
+            document.getElementById('tab-summary').classList.toggle('hidden', tab !== 'summary');
+            
+            const btnV = document.getElementById('btn-violations');
+            const btnS = document.getElementById('btn-summary');
+            
+            if (tab === 'violations') {
+                btnV.className = "flex-1 py-4 text-xs font-bold border-b-2 border-blue-500 text-blue-500 transition-all";
+                btnS.className = "flex-1 py-4 text-xs font-bold text-slate-500 border-b-2 border-transparent transition-all";
+            } else {
+                btnS.className = "flex-1 py-4 text-xs font-bold border-b-2 border-blue-500 text-blue-500 transition-all";
+                btnV.className = "flex-1 py-4 text-xs font-bold text-slate-500 border-b-2 border-transparent transition-all";
+            }
+        }
+    </script>
+</body>
+</html>

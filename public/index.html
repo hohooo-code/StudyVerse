@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STUDY VERSE - 專業大廳</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #05070a; color: #e0e0e0; font-family: 'Inter', sans-serif; }
+        * { scrollbar-width: thin; scrollbar-color: #374151 transparent; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 10px; }
+        .glass-panel { background: rgba(17, 24, 39, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); }
+        .neon-text { text-shadow: 0 0 10px rgba(59, 130, 246, 0.5); }
+        .bg-grid-pattern { background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px); background-size: 20px 20px; }
+        .room-card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-color: rgba(59, 130, 246, 0.4); }
+        
+        @keyframes pulse-blue {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .loading-pulse { animation: pulse-blue 2s infinite; }
+        /* QR Code 專用白色底座 */
+        #qrcode img { margin: 0 auto; border-radius: 8px; border: 4px solid white; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col relative bg-grid-pattern">
+    
+    <div id="loginOverlay" class="fixed inset-0 bg-[#05070a] z-[9999] flex items-center justify-center hidden">
+        <div class="bg-[#111827] p-8 rounded-3xl border border-gray-800 shadow-2xl max-w-sm w-full text-center">
+            <div class="w-20 h-20 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-user-shield text-blue-500 text-3xl"></i>
+            </div>
+            <h1 class="text-3xl font-black text-blue-500 mb-2">身分登錄</h1>
+            <p class="text-gray-500 text-xs mb-6">建立你的專屬指揮官代號</p>
+            <input id="setupName" onkeypress="if(event.key === 'Enter') saveName()" class="w-full bg-black p-4 rounded-xl border border-gray-700 text-white mb-6 text-center text-lg font-bold focus:border-blue-500 outline-none transition-all" placeholder="輸入您的專屬暱稱...">
+            <button onclick="saveName()" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-bold text-white shadow-lg shadow-blue-900/20 transition-all active:scale-95">確認綁定，載入存檔</button>
+        </div>
+    </div>
+
+    <header class="h-16 flex justify-between items-center px-8 glass-panel sticky top-0 z-50">
+        <div>
+            <h1 class="text-xl font-black text-blue-500 tracking-wider neon-text">STUDY VERSE <span class="text-xs text-gray-400 font-normal">大廳</span></h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="text-right hidden sm:block">
+                <p id="navName" class="text-sm font-bold text-white leading-none">--</p>
+                <p class="text-[10px] text-gray-500 uppercase tracking-tighter">Verified Commander</p>
+            </div>
+            <img id="navAvatar" src="" class="w-10 h-10 rounded-full border-2 border-gray-700 bg-gray-800 object-cover" alt="User Avatar">
+            <button onclick="logout()" class="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 hover:bg-red-500/20 hover:text-red-500 transition-all text-gray-500" title="登出">
+                <i class="fas fa-sign-out-alt text-sm"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-6xl w-full mx-auto p-6 md:p-8 flex flex-col gap-8">
+        
+        <section class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div class="glass-panel p-6 rounded-2xl border-t-2 border-blue-500 relative overflow-hidden group">
+                <div class="text-gray-400 text-xs font-bold mb-2 uppercase tracking-widest flex justify-between">
+                    <span><i class="fas fa-clock text-blue-500 mr-2"></i>累積專注時間</span>
+                </div>
+                <div class="text-4xl font-mono font-bold text-white" id="totalTimeDisplay">--<span class="text-lg text-gray-500 ml-1">min</span></div>
+                <div class="absolute -right-2 -bottom-2 opacity-5 text-blue-500 text-6xl group-hover:scale-110 transition-transform"><i class="fas fa-stopwatch"></i></div>
+            </div>
+
+            <div class="glass-panel p-6 rounded-2xl border-t-2 border-orange-500 relative overflow-hidden group">
+                <div class="text-gray-400 text-xs font-bold mb-2 uppercase tracking-widest">
+                    <span><i class="fas fa-fire text-orange-500 mr-2"></i>連續登入天數</span>
+                </div>
+                <div class="text-4xl font-mono font-bold text-white" id="streakDisplay">--<span class="text-lg text-gray-500 ml-1">days</span></div>
+                <div class="absolute -right-2 -bottom-2 opacity-5 text-orange-500 text-6xl group-hover:rotate-12 transition-transform"><i class="fas fa-flame"></i></div>
+            </div>
+
+            <div class="glass-panel p-6 rounded-2xl border-t-2 border-red-500 relative overflow-hidden group">
+                <div class="text-gray-400 text-xs font-bold mb-2 uppercase tracking-widest flex justify-between">
+                    <span><i class="fas fa-shield-heart text-red-500 mr-2"></i>誠信信用分</span>
+                </div>
+                <div class="text-4xl font-mono font-bold text-white" id="integrityDisplay">--<span class="text-lg text-gray-500 ml-1">pt</span></div>
+                <div class="absolute -right-2 -bottom-2 opacity-5 text-red-500 text-6xl group-hover:scale-110 transition-transform"><i class="fas fa-shield-virus"></i></div>
+            </div>
+
+            <div class="glass-panel p-6 rounded-2xl border-t-2 border-yellow-500 relative overflow-hidden group">
+                <div class="text-gray-400 text-xs font-bold mb-2 uppercase tracking-widest flex justify-between">
+                    <span><i class="fas fa-trophy text-yellow-500 mr-2"></i>解鎖書桌等級</span>
+                </div>
+                <div class="text-xl font-bold text-yellow-500 italic mt-2" id="rankDisplay">分析中...</div>
+                <div class="absolute -right-2 -bottom-2 opacity-10 text-yellow-500 text-6xl group-hover:scale-110 transition-transform"><i class="fas fa-medal"></i></div>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <div class="lg:col-span-3">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-bold text-white flex items-center"><i class="fas fa-layer-group mr-3 text-blue-400"></i>AI 專業自習空間</h2>
+                    <span class="text-[10px] text-blue-500 font-bold bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20 uppercase">Sync Enabled</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="glass-panel p-6 rounded-3xl room-card transition-all duration-300 flex flex-col border border-white/5 group cursor-pointer" 
+                         onclick="location.href='ai-room.html?mode=2'">
+                        <div class="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center text-purple-400 text-2xl mb-4 group-hover:bg-purple-500 group-hover:text-white transition-all">
+                            <i class="fas fa-eye-slash"></i>
+                        </div>
+                        <h3 class="text-xl font-black text-white mb-1">沉浸式自習室</h3>
+                        <p class="text-gray-500 text-xs mb-4 flex-1">極致嚴格。禁止分心動作，AI 將以最高頻掃描視線偏移與手機。</p>
+                        <div class="w-full text-center bg-white/5 group-hover:bg-purple-600 py-2 rounded-lg text-xs font-bold text-white transition-all">進入教室</div>
+                    </div>
+
+                    <div class="glass-panel p-6 rounded-3xl room-card transition-all duration-300 flex flex-col border-2 border-blue-500/30 group cursor-pointer relative overflow-hidden" 
+                         onclick="location.href='ai-room.html?mode=simulated'">
+                        <div class="absolute top-0 right-0 bg-blue-500 text-[8px] text-white px-3 py-1 font-black rounded-bl-xl uppercase">Best Sync</div>
+                        <div class="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-400 text-2xl mb-4 group-hover:bg-blue-500 group-hover:text-white transition-all">
+                            <i class="fas fa-users-viewfinder"></i>
+                        </div>
+                        <h3 class="text-xl font-black text-white mb-1">模擬線上教室</h3>
+                        <p class="text-gray-500 text-xs mb-4 flex-1">支援手機翻轉連動。搭配跨裝置同步，大幅減少 AI 誤判率。</p>
+                        <div class="w-full text-center bg-blue-600 group-hover:bg-blue-400 py-2 rounded-lg text-xs font-bold text-white transition-all">進入教室</div>
+                    </div>
+
+                    <div class="glass-panel p-6 rounded-3xl room-card transition-all duration-300 flex flex-col border border-white/5 group cursor-pointer" 
+                         onclick="location.href='ai-room.html?mode=1'">
+                        <div class="w-12 h-12 bg-cyan-500/20 rounded-xl flex items-center justify-center text-cyan-400 text-2xl mb-4 group-hover:bg-cyan-500 group-hover:text-white transition-all">
+                            <i class="fas fa-graduation-cap"></i>
+                        </div>
+                        <h3 class="text-xl font-black text-white mb-1">線上課程專區</h3>
+                        <p class="text-gray-500 text-xs mb-4 flex-1">寬鬆判定。自動辨識「寫筆記」動作，適合撰寫報告時使用。</p>
+                        <div class="w-full text-center bg-white/5 group-hover:bg-cyan-600 py-2 rounded-lg text-xs font-bold text-white transition-all">進入教室</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-1 flex flex-col gap-6">
+                <div>
+                    <h2 class="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 italic">Device Sync</h2>
+                    <div id="syncModule" class="glass-panel p-6 rounded-3xl border border-blue-500/20 text-center flex flex-col items-center">
+                        <div class="text-blue-500 text-xs font-black mb-4 flex items-center gap-2">
+                            <i class="fas fa-qrcode"></i> 手機連動 QR CODE
+                        </div>
+                        
+                        <div id="qrcode" class="p-2 bg-white rounded-xl shadow-2xl shadow-blue-500/20"></div>
+                        
+                        <p class="text-[10px] text-gray-500 mt-4 leading-relaxed">
+                            請用手機掃描並完成翻轉<br>即可在 AI 教室中獲得誤判豁免
+                        </p>
+                        <button onclick="copyMobileUrl()" class="mt-4 text-[10px] text-blue-500 font-mono underline hover:text-blue-400 transition-colors">
+                            COPY MOBILE LINK
+                        </button>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6 rounded-3xl border border-white/5 group cursor-pointer hover:border-green-500/30 transition-all" onclick="location.href='flip-room.html'">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center text-green-500">
+                            <i class="fas fa-mobile-alt text-xl"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-white font-bold text-sm">單機翻轉</h4>
+                            <p class="text-[10px] text-gray-500 uppercase">Lite Mode</p>
+                        </div>
+                        <i class="fas fa-chevron-right ml-auto text-gray-700 group-hover:text-green-500 transition-all"></i>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <div class="glass-panel rounded-3xl overflow-hidden flex flex-col border border-white/5">
+                <div class="p-4 border-b border-white/5 bg-black/20 flex justify-between items-center">
+                    <h3 class="text-sm font-bold text-white uppercase tracking-tighter"><i class="fas fa-history mr-2 text-blue-400"></i>Mission Logs / 最近紀錄</h3>
+                </div>
+                <div class="p-0 overflow-y-auto max-h-[300px]">
+                    <table class="w-full text-left border-collapse">
+                        <tbody id="recordsTableBody" class="text-xs text-gray-400 divide-y divide-white/5">
+                            <tr><td colspan="3" class="p-8 text-center"><i class="fas fa-circle-notch fa-spin mr-2"></i>連線中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="p-6 text-center text-gray-600 text-[10px] tracking-widest uppercase">
+        Study Verse &copy; 2026 AI Focus System. All rights reserved.
+    </footer>
+
+    <script>
+        let myUsername = localStorage.getItem('studyVerseUser');
+
+        function checkLogin() {
+            if (!myUsername) {
+                document.getElementById('loginOverlay').classList.remove('hidden');
+                setTimeout(() => document.getElementById('setupName').focus(), 100);
+            } else {
+                document.getElementById('navName').innerText = myUsername;
+                document.getElementById('navAvatar').src = `https://api.dicebear.com/7.x/big-smile/svg?seed=${myUsername}&backgroundColor=b6e3f4`;
+                fetchUserStats();
+                initSyncQRCode(); // 初始化 QR Code
+            }
+        }
+
+        // --- 新增：QR Code 生成功能 ---
+        function initSyncQRCode() {
+            const qrcodeContainer = document.getElementById("qrcode");
+            const mobileUrl = `${window.location.protocol}//${window.location.host}/mobile.html`;
+            
+            qrcodeContainer.innerHTML = ""; // 清空
+
+            new QRCode(qrcodeContainer, {
+                text: mobileUrl,
+                width: 140,
+                height: 140,
+                colorDark : "#0f172a",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
+            });
+        }
+
+        function copyMobileUrl() {
+            const mobileUrl = `${window.location.protocol}//${window.location.host}/mobile.html`;
+            navigator.clipboard.writeText(mobileUrl);
+            alert('手機連動網址已複製到剪貼簿！');
+        }
+
+        function saveName() {
+            const name = document.getElementById('setupName').value.trim();
+            if (name) {
+                localStorage.setItem('studyVerseUser', name);
+                myUsername = name;
+                document.getElementById('loginOverlay').classList.add('hidden');
+                checkLogin();
+            }
+        }
+
+        function logout() {
+            if(confirm('確定要登出並切換指揮官身分嗎？')) {
+                localStorage.removeItem('studyVerseUser');
+                location.reload();
+            }
+        }
+
+        async function fetchUserStats() {
+            try {
+                const response = await fetch(`/api/user-stats?username=${encodeURIComponent(myUsername)}`);
+                if (!response.ok) throw new Error('伺服器回應錯誤');
+                const data = await response.json();
+                
+                const totalMinutes = data.user ? Math.floor(data.user.total_seconds / 60) : 0;
+                const streak = data.user ? data.user.streak : 0;
+                const integrity = data.user ? (data.user.integrity_score || 100) : 100;
+
+                document.getElementById('totalTimeDisplay').innerHTML = `${totalMinutes}<span class="text-lg text-gray-500 ml-1">min</span>`;
+                document.getElementById('streakDisplay').innerHTML = `${streak}<span class="text-lg text-gray-500 ml-1">days</span>`;
+                document.getElementById('integrityDisplay').innerHTML = `${integrity}<span class="text-lg text-gray-500 ml-1">pt</span>`;
+                
+                let deskName = "🪵 初心木桌";
+                if (streak >= 30) deskName = "🚀 虛擬座艙";
+                else if (streak >= 7) deskName = "👑 黃金書桌";
+                else if (streak >= 3) deskName = "⚙️ 合金工作台";
+                document.getElementById('rankDisplay').innerText = deskName;
+
+                const tbody = document.getElementById('recordsTableBody');
+                if (!data.records || data.records.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="3" class="p-8 text-center text-gray-500 uppercase tracking-widest">No Logs Found / 尚無數據</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = data.records.map(record => {
+                    const date = new Date(record.created_at);
+                    const dateStr = date.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' }) + ' ' + 
+                                  date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+                    const m = Math.floor(record.focus_seconds / 60);
+                    
+                    let icon = record.room_type === 'flip-room' ? 'fa-mobile-alt text-green-500' : 'fa-desktop text-blue-500';
+                    let typeLabel = record.room_type === 'flip-room' ? '手機翻轉模式' : 'AI 監控教室';
+
+                    return `
+                        <tr class="hover:bg-white/5 transition-colors group">
+                            <td class="p-4 pl-8"><span class="text-gray-500 font-mono tracking-tighter">${dateStr}</span></td>
+                            <td class="p-4"><span class="flex items-center gap-2 text-white font-bold"><i class="fas ${icon}"></i>${typeLabel}</span></td>
+                            <td class="p-4 text-right pr-8">
+                                <span class="font-mono text-blue-400 font-bold tracking-widest">+ ${m} MIN</span>
+                            </td>
+                        </tr>`;
+                }).join('');
+            } catch (error) {
+                console.error("數據同步失敗:", error);
+                document.getElementById('recordsTableBody').innerHTML = `<tr><td colspan="3" class="p-8 text-center text-red-500/60 font-black uppercase">Sync Failed / 資料庫同步失敗</td></tr>`;
+            }
+        }
+
+        checkLogin();
+    </script>
+</body>
+</html>
